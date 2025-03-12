@@ -1,4 +1,4 @@
-# Metadata Extraction from Legal Documents
+# Metadata Extraction from documents
 
 ## Overview
 
