@@ -18,7 +18,4 @@ This project provides an automated pipeline to extract key metadata from legal a
 - ✅ Logging of all processes and error handling.
 - ✅ Results saved in JSON format.
 
----
-
-## Project Structure
 
