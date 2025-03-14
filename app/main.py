@@ -1,5 +1,4 @@
 import os
-import json
 import re
 import xml.etree.ElementTree as ET
 from flask import Flask, request, jsonify
