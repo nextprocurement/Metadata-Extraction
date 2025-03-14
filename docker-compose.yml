@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  metadata_api:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+    restart: always

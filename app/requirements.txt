@@ -1,0 +1,10 @@
+flask
+pandas
+xmltodict
+langchain
+langchain-openai
+langchain-community
+langchain-core
+faiss-cpu
+python-dotenv
+pyarrow
