@@ -3,7 +3,6 @@ import re
 import xml.etree.ElementTree as ET
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -69,19 +68,35 @@ prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
 # ✅ Helper functions
 # -----------------------------
 
-def format_content(xml_content):
+def format_content(text):
+    """
+    Formats the input text. If it's XML, extracts its content. Also cleans problematic characters.
+    """
     try:
-        c_et = ET.fromstring(xml_content)
-        return ET.tostring(c_et, method='text', encoding='utf-8').decode('utf-8')
+        # Validate and clean text
+        text = re.sub(r'[^\x00-\x7F]+', ' ', text)  # Remove non-ASCII characters
+        text = text.strip()
+
+        if text.startswith("<"):
+            c_et = ET.fromstring(text)
+            return ET.tostring(c_et, method='text', encoding='utf-8').decode('utf-8')
+        
+        return text
     except Exception:
-        return None
+        return text  # Return the original text if parsing fails
 
 def create_documents(text):
+    """
+    Splits the text into manageable chunks.
+    """
     splitter = RecursiveCharacterTextSplitter(chunk_size=2048, chunk_overlap=256)
     chunks = splitter.split_text(text)
     return [Document(page_content=chunk) for chunk in chunks]
 
 def divide_by_categories(texto):
+    """
+    Divides the result into specific categories.
+    """
     categorias = {
         "criterios_adjudicacion": "Criterios de adjudicación",
         "criterios_solvencia": "Criterios de solvencia",
@@ -90,13 +105,18 @@ def divide_by_categories(texto):
     resultado = {key: "" for key in categorias}
     patron = "|".join(re.escape(v) for v in categorias.values())
     secciones = re.split(f"(?=### {patron})", texto)
+    
     for seccion in secciones:
         for key, encabezado in categorias.items():
             if encabezado in seccion:
                 resultado[key] = seccion.replace(f"### {encabezado}", "").strip()
+    
     return resultado
 
 def clean_text(text):
+    """
+    Cleans the text by removing unwanted characters.
+    """
     return re.sub(r'[^\w\s.,-]', '', text)
 
 # -----------------------------
@@ -104,69 +124,48 @@ def clean_text(text):
 # -----------------------------
 @app.route("/extract_metadata", methods=["POST"])
 def extract_metadata():
+    """
+    Endpoint to extract metadata from a text sent in the JSON request.
+    """
+    data = request.get_json()
 
-    if 'file' not in request.files:
-        return jsonify({"error": "Missing Parquet file under 'file' field"}), 400
+    # Validate that the text was provided
+    if not data or 'text' not in data or not isinstance(data['text'], str):
+        return jsonify({"error": "Invalid input. Provide a valid 'text' field."}), 400
 
-    file = request.files['file']
+    text = data['text']
 
-    # Leer el parquet en memoria
+    formatted_text = format_content(text)
+    if not formatted_text:
+        return jsonify({"error": "Invalid text format"}), 400
+
+    docs = create_documents(formatted_text)
+    if not docs:
+        return jsonify({"error": "Empty content after processing"}), 400
+
+    # FAISS embeddings
+    vector_storage = FAISS.from_documents(docs, embeddings)
+    retriever = vector_storage.as_retriever()
+
+    # Pipeline
+    result_chain = (
+        RunnableParallel(context=retriever, question=RunnablePassthrough())
+        | prompt
+        | model
+        | StrOutputParser()
+    )
+
     try:
-        df = pd.read_parquet(file)
+        context = "\n".join([doc.page_content for doc in docs])
+        result_text = result_chain.invoke(context)
+
+        # ✅ Remove `procurement_id` and `doc_name` from the response
+        result_dict = divide_by_categories(clean_text(result_text))
+
+        return jsonify(result_dict), 200
+
     except Exception as e:
-        return jsonify({"error": f"Failed to read Parquet file: {str(e)}"}), 400
-
-    # Filtrar por Pliego_clausulas_administrativas
-    filtered_df = df[df['doc_name'].str.contains('Pliego_clausulas_administrativas', case=False, na=False)]
-
-    if filtered_df.empty:
-        return jsonify({"error": "No matching documents found in the Parquet file."}), 400
-
-    results = []
-
-    for _, row in filtered_df.iterrows():
-        procurement_id = row['procurement_id']
-        doc_name = row['doc_name']
-        content = row['content']
-
-        formatted_text = format_content(content.decode('utf-8') if isinstance(content, bytes) else content)
-        if not formatted_text:
-            continue
-
-        docs = create_documents(formatted_text)
-        if not docs:
-            continue
-
-        # FAISS embeddings
-        vector_storage = FAISS.from_documents(docs, embeddings)
-        retriever = vector_storage.as_retriever()
-
-        # Pipeline
-        result_chain = (
-            RunnableParallel(context=retriever, question=RunnablePassthrough())
-            | prompt
-            | model
-            | StrOutputParser()
-        )
-
-        try:
-            context = "\n".join([doc.page_content for doc in docs])
-            result_text = result_chain.invoke(context)
-            result_dict = {
-                "procurement_id": procurement_id,
-                "doc_name": doc_name,
-                **divide_by_categories(clean_text(result_text))
-            }
-            results.append(result_dict)
-
-        except Exception as e:
-            results.append({
-                "procurement_id": procurement_id,
-                "doc_name": doc_name,
-                "error": str(e)
-            })
-
-    return jsonify(results), 200
+        return jsonify({"error": str(e)}), 502
 
 # -----------------------------
 # ✅ Run Flask app

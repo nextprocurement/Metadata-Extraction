@@ -1,4 +1,3 @@
-
 # Metadata Extraction API
 
 ## Overview
@@ -8,8 +7,8 @@ This project provides a **REST API** to extract **contract metadata** such as:
 - Solvency Criteria
 - Special Execution Conditions
 
-The extraction is based on **legal documents in XML format** using **OpenAI's GPT-4o-mini** model.  
-The API processes XML content to return a structured JSON output with the extracted information.
+The extraction is based on **text documents** using **OpenAI's GPT-4o-mini** model.  
+The API processes **raw text** input and returns a structured JSON output with the extracted information.
 
 ---
 
@@ -17,7 +16,7 @@ The API processes XML content to return a structured JSON output with the extrac
 
 - 📡 **REST API** for contract metadata extraction.
 - 🤖 Powered by **OpenAI GPT-4o-mini**.
-- 📄 Supports **XML document content** as input.
+- 📄 Supports **plain text** as input.
 - 🧠 Automatic extraction of 3 categories:
   - **Award Criteria**
   - **Solvency Criteria**
@@ -60,6 +59,8 @@ Create a `.env` file in the root directory and add your OpenAI API key:
 OPENAI_API_KEY=sk-your-api-key
 ```
 
+You can obtain an API key by registering at **[OpenAI's API platform](https://platform.openai.com/signup/)**.
+
 ---
 
 ## 🐳 Run with Docker
@@ -96,19 +97,15 @@ POST /extract_metadata
 
 ### Request Body (JSON)
 
-| Field             | Type   | Description                            |
-|-------------------|--------|----------------------------------------|
-| `procurement_id`  | string | ID of the procurement document          |
-| `doc_name`        | string | Name of the document                    |
-| `content`         | string | **Raw XML content** of the document     |
+| Field  | Type   | Description               |
+|--------|--------|---------------------------|
+| `text` | string | **Plain text content** to analyze |
 
 ### Example Request (cURL)
 
 ```bash
 curl -X POST "http://localhost:5000/extract_metadata" -H "Content-Type: application/json" -d '{
-  "procurement_id": "1234",
-  "doc_name": "Pliego_clausulas_administrativas",
-  "content": "<root><section>...</section></root>"
+  "text": "This contract is awarded based on financial and technical criteria..."
 }'
 ```
 
@@ -116,8 +113,6 @@ curl -X POST "http://localhost:5000/extract_metadata" -H "Content-Type: applicat
 
 ```json
 {
-  "procurement_id": "1234",
-  "doc_name": "Pliego_clausulas_administrativas",
   "criterios_adjudicacion": "Award criteria extracted...",
   "criterios_solvencia": "Solvency criteria extracted...",
   "condiciones_especiales": "Special conditions extracted..."
@@ -128,9 +123,8 @@ curl -X POST "http://localhost:5000/extract_metadata" -H "Content-Type: applicat
 
 ## ⚠️ Input Format Requirements
 
-- The `content` field must contain **valid XML format**.
-- The document should ideally be of type **Pliego_clausulas_administrativas** or similar.
-- The API automatically processes the XML to plain text before analysis.
+- The `text` field must contain **plain text**.
+- The API **automatically processes large text inputs** by splitting them into smaller sections before analysis.
 
 ---
 
@@ -191,3 +185,5 @@ python app/main.py
 API will be available at `http://localhost:5000/extract_metadata`.
 
 ---
+
+This version is optimized for **direct text-based metadata extraction** and supports **large text inputs** efficiently. 🚀
